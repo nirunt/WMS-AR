@@ -1,0 +1,67 @@
+{
+  "nav": {
+    "dashboard": "แดชบอร์ด",
+    "batches": "Batch การผลิต",
+    "qcReports": "รายงาน QC",
+    "coas": "COA",
+    "products": "สินค้า",
+    "search": "ค้นหา",
+    "users": "ผู้ใช้งาน",
+    "auditTrail": "ประวัติการใช้งาน",
+    "settings": "ตั้งค่า",
+    "profile": "โปรไฟล์"
+  },
+  "status": {
+    "DRAFT": "ร่าง",
+    "PRODUCTION_COMPLETE": "ผลิตเสร็จ",
+    "QC_PENDING": "รอ QC",
+    "QC_APPROVED": "QC อนุมัติ",
+    "QC_REJECTED": "QC ปฏิเสธ",
+    "PENDING_MANAGER_APPROVAL": "รออนุมัติผู้จัดการ",
+    "RELEASED": "ปล่อยจำหน่าย",
+    "REJECTED": "ปฏิเสธ",
+    "ARCHIVED": "เก็บถาวร"
+  },
+  "role": {
+    "ADMIN": "ผู้ดูแลระบบ",
+    "PRODUCTION": "ฝ่ายผลิต",
+    "QC": "ฝ่าย QC",
+    "MANAGER": "ผู้จัดการ"
+  },
+  "common": {
+    "create": "สร้างใหม่",
+    "edit": "แก้ไข",
+    "delete": "ลบ",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "search": "ค้นหา",
+    "filter": "กรอง",
+    "export": "ส่งออก",
+    "loading": "กำลังโหลด...",
+    "noData": "ไม่มีข้อมูล",
+    "confirm": "ยืนยัน",
+    "back": "ย้อนกลับ",
+    "next": "ถัดไป",
+    "prev": "ก่อนหน้า"
+  },
+  "batch": {
+    "title": "Batch การผลิต",
+    "create": "สร้าง Batch ใหม่",
+    "batchNumber": "หมายเลข Batch",
+    "product": "สินค้า",
+    "mfgDate": "วันที่ผลิต",
+    "expDate": "วันหมดอายุ",
+    "quantity": "จำนวน",
+    "operator": "ผู้ปฏิบัติงาน",
+    "status": "สถานะ",
+    "notes": "หมายเหตุ"
+  },
+  "auth": {
+    "login": "เข้าสู่ระบบ",
+    "logout": "ออกจากระบบ",
+    "email": "อีเมล",
+    "password": "รหัสผ่าน",
+    "loginTitle": "เข้าสู่ระบบ LIMS",
+    "loginSubtitle": "U&V Holding (Thailand) Co., Ltd."
+  }
+}

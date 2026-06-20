@@ -1,0 +1,67 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "batches": "Production Batches",
+    "qcReports": "QC Reports",
+    "coas": "COA",
+    "products": "Products",
+    "search": "Search",
+    "users": "Users",
+    "auditTrail": "Audit Trail",
+    "settings": "Settings",
+    "profile": "Profile"
+  },
+  "status": {
+    "DRAFT": "Draft",
+    "PRODUCTION_COMPLETE": "Production Complete",
+    "QC_PENDING": "QC Pending",
+    "QC_APPROVED": "QC Approved",
+    "QC_REJECTED": "QC Rejected",
+    "PENDING_MANAGER_APPROVAL": "Pending Manager Approval",
+    "RELEASED": "Released",
+    "REJECTED": "Rejected",
+    "ARCHIVED": "Archived"
+  },
+  "role": {
+    "ADMIN": "Admin",
+    "PRODUCTION": "Production",
+    "QC": "QC",
+    "MANAGER": "Manager"
+  },
+  "common": {
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "loading": "Loading...",
+    "noData": "No data",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "prev": "Previous"
+  },
+  "batch": {
+    "title": "Production Batches",
+    "create": "Create New Batch",
+    "batchNumber": "Batch Number",
+    "product": "Product",
+    "mfgDate": "Manufacturing Date",
+    "expDate": "Expiry Date",
+    "quantity": "Quantity",
+    "operator": "Operator",
+    "status": "Status",
+    "notes": "Notes"
+  },
+  "auth": {
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "loginTitle": "LIMS Sign In",
+    "loginSubtitle": "U&V Holding (Thailand) Co., Ltd."
+  }
+}

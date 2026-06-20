@@ -1,0 +1,354 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  PRODUCTION
+  QC
+  MANAGER
+}
+
+enum BatchStatus {
+  DRAFT
+  PRODUCTION_COMPLETE
+  QC_PENDING
+  QC_APPROVED
+  QC_REJECTED
+  PENDING_MANAGER_APPROVAL
+  RELEASED
+  REJECTED
+  ARCHIVED
+}
+
+enum QCResult {
+  PASS
+  FAIL
+  PENDING
+}
+
+enum PassFail {
+  PASS
+  FAIL
+  NA
+}
+
+enum ApprovalAction {
+  APPROVE
+  REJECT
+}
+
+enum ApproverRole {
+  QC
+  MANAGER
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String
+  passwordHash  String    @map("password_hash")
+  role          UserRole
+  department    String?
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  batchesCreated    Batch[]      @relation("BatchCreatedBy")
+  batchesOperated   Batch[]      @relation("BatchOperator")
+  batchReports      BatchReport[]
+  qcReports         QCReport[]
+  approvals         Approval[]
+  coasIssued        COA[]
+  attachments       Attachment[]
+  notifications     Notification[]
+
+  @@map("users")
+}
+
+model ProductMaster {
+  id               String    @id @default(uuid())
+  productCode      String    @unique @map("product_code")
+  nameTh           String    @map("name_th")
+  nameEn           String    @map("name_en")
+  category         String?
+  shelfLifeDays    Int       @map("shelf_life_days")
+  storageCondition String?   @map("storage_condition")
+  specTemplate     Json?     @map("spec_template")
+  qcTemplateId     String?   @map("qc_template_id")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdBy        String?   @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  batches     Batch[]
+  qcTemplate  QCTemplate? @relation(fields: [qcTemplateId], references: [id])
+
+  @@map("product_master")
+}
+
+model QCTemplate {
+  id         String    @id @default(uuid())
+  name       String
+  productId  String?   @map("product_id")
+  isActive   Boolean   @default(true) @map("is_active")
+  version    Int       @default(1)
+  createdBy  String?   @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  items    QCTemplateItem[]
+  products ProductMaster[]
+  qcReports QCReport[]
+
+  @@map("qc_templates")
+}
+
+model QCTemplateItem {
+  id            String   @id @default(uuid())
+  templateId    String   @map("template_id")
+  testItem      String   @map("test_item")
+  specification String
+  unit          String?
+  orderIndex    Int      @default(0) @map("order_index")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  template     QCTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  reportItems  QCReportItem[]
+
+  @@map("qc_template_items")
+}
+
+model Batch {
+  id                String      @id @default(uuid())
+  batchNumber       String      @unique @map("batch_number")
+  productId         String      @map("product_id")
+  manufacturingDate DateTime    @map("manufacturing_date") @db.Date
+  expiryDate        DateTime    @map("expiry_date") @db.Date
+  quantityProduced  Decimal     @map("quantity_produced") @db.Decimal(12, 3)
+  quantityUnit      String      @default("units") @map("quantity_unit")
+  operatorId        String      @map("operator_id")
+  status            BatchStatus @default(DRAFT)
+  productionNotes   String?     @map("production_notes")
+  revisionNumber    Int         @default(0) @map("revision_number")
+  parentBatchId     String?     @map("parent_batch_id")
+  createdBy         String      @map("created_by")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  deletedAt         DateTime?   @map("deleted_at")
+
+  product       ProductMaster      @relation(fields: [productId], references: [id])
+  operator      User               @relation("BatchOperator", fields: [operatorId], references: [id])
+  creator       User               @relation("BatchCreatedBy", fields: [createdBy], references: [id])
+  parentBatch   Batch?             @relation("BatchRevisions", fields: [parentBatchId], references: [id])
+  revisions     Batch[]            @relation("BatchRevisions")
+  rawMaterials  RawMaterialEntry[]
+  batchReport   BatchReport?
+  qcReport      QCReport?
+  approvals     Approval[]
+  coa           COA?
+
+  @@map("batches")
+}
+
+model BatchSequence {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  dateKey   DateTime @map("date_key") @db.Date
+  lastSeq   Int      @default(0) @map("last_seq")
+
+  @@unique([productId, dateKey])
+  @@map("batch_sequences")
+}
+
+model RawMaterialEntry {
+  id           String   @id @default(uuid())
+  batchId      String   @map("batch_id")
+  materialName String   @map("material_name")
+  lotNumber    String?  @map("lot_number")
+  supplier     String?
+  quantityUsed Decimal  @map("quantity_used") @db.Decimal(12, 3)
+  unit         String
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("raw_material_entries")
+}
+
+model BatchReport {
+  id                String    @id @default(uuid())
+  batchId           String    @unique @map("batch_id")
+  productionStart   DateTime? @map("production_start")
+  productionEnd     DateTime? @map("production_end")
+  operatorId        String    @map("operator_id")
+  equipmentUsed     String[]  @map("equipment_used")
+  processChecklist  Json?     @map("process_checklist")
+  deviationReport   String?   @map("deviation_report")
+  isSigned          Boolean   @default(false) @map("is_signed")
+  signedAt          DateTime? @map("signed_at")
+  signatureMeta     Json?     @map("signature_meta")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  batch       Batch       @relation(fields: [batchId], references: [id])
+  operator    User        @relation(fields: [operatorId], references: [id])
+  attachments Attachment[]
+
+  @@map("batch_reports")
+}
+
+model QCReport {
+  id               String    @id @default(uuid())
+  batchId          String    @unique @map("batch_id")
+  qcOfficerId      String    @map("qc_officer_id")
+  templateId       String?   @map("template_id")
+  templateVersion  Int?      @map("template_version")
+  overallResult    QCResult  @default(PENDING) @map("overall_result")
+  rejectionReason  String?   @map("rejection_reason")
+  submittedAt      DateTime? @map("submitted_at")
+  isSigned         Boolean   @default(false) @map("is_signed")
+  signedAt         DateTime? @map("signed_at")
+  signatureMeta    Json?     @map("signature_meta")
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  batch       Batch          @relation(fields: [batchId], references: [id])
+  qcOfficer   User           @relation(fields: [qcOfficerId], references: [id])
+  template    QCTemplate?    @relation(fields: [templateId], references: [id])
+  items       QCReportItem[]
+  attachments Attachment[]
+
+  @@map("qc_reports")
+}
+
+model QCReportItem {
+  id             String   @id @default(uuid())
+  qcReportId     String   @map("qc_report_id")
+  templateItemId String?  @map("template_item_id")
+  testItem       String   @map("test_item")
+  specification  String
+  unit           String?
+  result         String?
+  passFail       PassFail @default(NA) @map("pass_fail")
+  comment        String?
+  orderIndex     Int      @default(0) @map("order_index")
+
+  qcReport     QCReport       @relation(fields: [qcReportId], references: [id], onDelete: Cascade)
+  templateItem QCTemplateItem? @relation(fields: [templateItemId], references: [id])
+
+  @@map("qc_report_items")
+}
+
+model Approval {
+  id         String         @id @default(uuid())
+  batchId    String         @map("batch_id")
+  approverId String         @map("approver_id")
+  roleAtTime ApproverRole   @map("role_at_time")
+  action     ApprovalAction
+  comment    String?
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  batch    Batch @relation(fields: [batchId], references: [id])
+  approver User  @relation(fields: [approverId], references: [id])
+
+  @@map("approvals")
+}
+
+model COA {
+  id          String    @id @default(uuid())
+  coaNumber   String    @unique @map("coa_number")
+  batchId     String    @unique @map("batch_id")
+  qcReportId  String    @map("qc_report_id")
+  issuedBy    String    @map("issued_by")
+  issueDate   DateTime  @default(now()) @map("issue_date") @db.Date
+  pdfPath     String?   @map("pdf_path")
+  qrCodeUrl   String?   @map("qr_code_url")
+  isRevoked   Boolean   @default(false) @map("is_revoked")
+  revokeReason String?  @map("revoke_reason")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  batch    Batch    @relation(fields: [batchId], references: [id])
+  issuer   User     @relation(fields: [issuedBy], references: [id])
+
+  @@map("coas")
+}
+
+model COASequence {
+  id       String   @id @default(uuid())
+  dateKey  DateTime @unique @map("date_key") @db.Date
+  lastSeq  Int      @default(0) @map("last_seq")
+
+  @@map("coa_sequences")
+}
+
+model Attachment {
+  id            String    @id @default(uuid())
+  entityType    String    @map("entity_type")
+  batchReportId String?   @map("batch_report_id")
+  qcReportId    String?   @map("qc_report_id")
+  fileName      String    @map("file_name")
+  storageKey    String    @map("storage_key")
+  fileSize      Int       @map("file_size")
+  mimeType      String    @map("mime_type")
+  uploadedBy    String    @map("uploaded_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  uploader    User         @relation(fields: [uploadedBy], references: [id])
+  batchReport BatchReport? @relation(fields: [batchReportId], references: [id])
+  qcReport    QCReport?    @relation(fields: [qcReportId], references: [id])
+
+  @@map("attachments")
+}
+
+model AuditTrail {
+  id            String   @id @default(uuid())
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id")
+  action        String
+  userId        String?  @map("user_id")
+  userName      String?  @map("user_name")
+  userRole      String?  @map("user_role")
+  oldValues     Json?    @map("old_values")
+  newValues     Json?    @map("new_values")
+  changedFields String[] @map("changed_fields")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  sessionId     String?  @map("session_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("audit_trail")
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  type        String
+  title       String
+  message     String
+  entityType  String?   @map("entity_type")
+  entityId    String?   @map("entity_id")
+  isRead      Boolean   @default(false) @map("is_read")
+  emailSent   Boolean   @default(false) @map("email_sent")
+  emailSentAt DateTime? @map("email_sent_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
