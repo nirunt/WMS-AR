@@ -1,52 +1,66 @@
-import { prisma } from "@/lib/prisma"
-import { BatchStatus, UserRole } from "@/lib/db"
-import { formatDate } from "@/lib/utils"
 import { auth } from "@/lib/auth"
-import Link from "next/link"
-import { Card } from "@/components/shared/Card"
+import { prisma } from "@/lib/prisma"
 import { BatchStatusBadge } from "@/components/batch/BatchStatusBadge"
+import { Card } from "@/components/shared/Card"
 import { Button } from "@/components/shared/Button"
-import { BATCH_STATUS_LABELS } from "@/lib/utils"
+import { formatDate } from "@/lib/utils"
+import { Plus, FlaskConical } from "lucide-react"
+import Link from "next/link"
 
-const PAGE_SIZE = 20
+type BatchStatus =
+  | "DRAFT"
+  | "PRODUCTION_COMPLETE"
+  | "QC_PENDING"
+  | "QC_APPROVED"
+  | "QC_REJECTED"
+  | "PENDING_MANAGER_APPROVAL"
+  | "RELEASED"
+  | "REJECTED"
+  | "ARCHIVED"
 
 interface SearchParams {
-  page?: string
   status?: string
+  productId?: string
   q?: string
+  page?: string
 }
 
 async function getBatches(searchParams: SearchParams) {
-  const page = Math.max(1, Number(searchParams.page ?? 1))
-  const status = searchParams.status as BatchStatus | undefined
-  const q = searchParams.q?.trim()
+  const page = parseInt(searchParams.page ?? "1")
+  const perPage = 20
+  const skip = (page - 1) * perPage
 
-  const where = {
-    deletedAt: null,
-    ...(status ? { status } : {}),
-    ...(q
-      ? {
-          OR: [
-            { batchNumber: { contains: q, mode: "insensitive" as const } },
-            { product: { nameEn: { contains: q, mode: "insensitive" as const } } },
-            { product: { nameTh: { contains: q, mode: "insensitive" as const } } },
-          ],
-        }
-      : {}),
+  const where: Record<string, unknown> = { deletedAt: null }
+
+  if (searchParams.status && searchParams.status !== "ALL") {
+    where.status = searchParams.status as BatchStatus
+  }
+  if (searchParams.productId) {
+    where.productId = searchParams.productId
+  }
+  if (searchParams.q) {
+    where.OR = [
+      { batchNumber: { contains: searchParams.q, mode: "insensitive" } },
+      { product: { nameTh: { contains: searchParams.q, mode: "insensitive" } } },
+      { product: { nameEn: { contains: searchParams.q, mode: "insensitive" } } },
+    ]
   }
 
-  const [total, batches] = await Promise.all([
-    prisma.batch.count({ where }),
+  const [batches, total] = await Promise.all([
     prisma.batch.findMany({
       where,
+      include: {
+        product: { select: { nameTh: true, nameEn: true, productCode: true } },
+        operator: { select: { name: true } },
+      },
       orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: { product: true, createdBy: { select: { fullName: true } } },
+      skip,
+      take: perPage,
     }),
+    prisma.batch.count({ where }),
   ])
 
-  return { batches, total, page, totalPages: Math.ceil(total / PAGE_SIZE) }
+  return { batches, total, page, perPage }
 }
 
 export default async function BatchesPage({
@@ -54,122 +68,152 @@ export default async function BatchesPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const params = await searchParams
-  const session = await auth()
-  const { batches, total, page, totalPages } = await getBatches(params)
+  const [session, params] = await Promise.all([auth(), searchParams])
+  const { batches, total, page, perPage } = await getBatches(params)
 
-  const canCreate = session?.user?.role === UserRole.PRODUCTION || session?.user?.role === UserRole.ADMIN
+  const canCreate = ["ADMIN", "PRODUCTION"].includes(session!.user.role)
+  const totalPages = Math.ceil(total / perPage)
 
-  const statusFilters: Array<{ value: string; label: string }> = [
-    { value: "", label: "ทั้งหมด" },
-    ...Object.values(BatchStatus).map((s) => ({ value: s, label: BATCH_STATUS_LABELS[s] })),
+  const statuses: { value: string; label: string }[] = [
+    { value: "ALL", label: "ทั้งหมด" },
+    { value: "DRAFT", label: "ร่าง" },
+    { value: "PRODUCTION_COMPLETE", label: "ผลิตเสร็จ" },
+    { value: "QC_PENDING", label: "รอ QC" },
+    { value: "QC_APPROVED", label: "QC อนุมัติ" },
+    { value: "QC_REJECTED", label: "QC ปฏิเสธ" },
+    { value: "PENDING_MANAGER_APPROVAL", label: "รออนุมัติผู้จัดการ" },
+    { value: "RELEASED", label: "ปล่อยจำหน่าย" },
+    { value: "REJECTED", label: "ปฏิเสธ" },
+    { value: "ARCHIVED", label: "เก็บถาวร" },
   ]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">บันทึก Batch</h1>
+        <div>
+          <h1 className="text-xl font-bold text-[#003B73]">Batch การผลิต</h1>
+          <p className="text-sm text-gray-500 mt-0.5">ทั้งหมด {total} รายการ</p>
+        </div>
         {canCreate && (
           <Link href="/batches/new">
-            <Button
-              leftIcon={
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              }
-            >
+            <Button>
+              <Plus className="w-4 h-4" />
               สร้าง Batch ใหม่
             </Button>
           </Link>
         )}
       </div>
 
+      {/* Status filter chips */}
       <div className="flex gap-2 flex-wrap">
-        {statusFilters.map((f) => (
-          <Link
-            key={f.value}
-            href={`/batches?status=${f.value}`}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              params.status === f.value || (!params.status && f.value === "")
-                ? "bg-[#003B73] text-white border-[#003B73]"
-                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-            }`}
-          >
-            {f.label}
-          </Link>
-        ))}
+        {statuses.map((s) => {
+          const isActive = (params.status ?? "ALL") === s.value
+          return (
+            <Link
+              key={s.value}
+              href={`/batches${s.value !== "ALL" ? `?status=${s.value}` : ""}`}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                isActive
+                  ? "bg-[#003B73] text-white border-[#003B73]"
+                  : "bg-white text-gray-600 border-[#e2e8f0] hover:border-[#003B73] hover:text-[#003B73]"
+              }`}
+            >
+              {s.label}
+            </Link>
+          )
+        })}
       </div>
 
+      {/* Table */}
       <Card>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {["เลข Batch", "สินค้า", "สถานะ", "ผลิตโดย", "วันที่สร้าง", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {batches.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">
-                    ไม่มีบันทึก
-                  </td>
-                </tr>
-              ) : (
-                batches.map((batch) => (
-                  <tr key={batch.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-mono font-medium text-[#003B73]">
-                      {batch.batchNumber}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{batch.product.nameEn}</td>
-                    <td className="px-4 py-3">
-                      <BatchStatusBadge status={batch.status} />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{batch.createdBy.fullName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{formatDate(batch.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/batches/${batch.id}`}
-                        className="text-sm text-[#003B73] hover:underline font-medium"
-                      >
-                        ดูรายละเอียด
-                      </Link>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              แสดง {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} จาก {total} รายการ
-            </p>
-            <div className="flex gap-2">
-              {page > 1 && (
-                <Link
-                  href={`/batches?page=${page - 1}&status=${params.status ?? ""}`}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  ก่อนหน้า
-                </Link>
-              )}
-              {page < totalPages && (
-                <Link
-                  href={`/batches?page=${page + 1}&status=${params.status ?? ""}`}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  ถัดไป
-                </Link>
-              )}
+        {batches.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="w-14 h-14 rounded-full bg-[#003B73]/5 flex items-center justify-center mb-3">
+              <FlaskConical className="w-7 h-7 text-[#003B73]/30" />
             </div>
+            <p className="text-sm font-medium text-gray-700">ไม่มี Batch</p>
+            <p className="text-xs text-gray-500 mt-1">ยังไม่มีข้อมูล Batch ในขณะนี้</p>
           </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">หมายเลข Batch</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">สินค้า</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">วันที่ผลิต</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">วันหมดอายุ</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">จำนวน</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">ผู้ปฏิบัติงาน</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#e2e8f0]">
+                  {batches.map((batch) => (
+                    <tr
+                      key={batch.id}
+                      className="bg-white hover:bg-[#003B73]/[0.02] transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/batches/${batch.id}`}
+                          className="font-semibold text-[#003B73] hover:underline"
+                        >
+                          {batch.batchNumber}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900">{batch.product.nameTh}</div>
+                        <div className="text-xs text-gray-400">{batch.product.productCode}</div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">
+                        {formatDate(batch.manufacturingDate)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">
+                        {formatDate(batch.expiryDate)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {Number(batch.quantityProduced).toLocaleString()} {batch.quantityUnit}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{batch.operator.name}</td>
+                      <td className="px-4 py-3">
+                        <BatchStatusBadge status={batch.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-[#e2e8f0]">
+                <p className="text-xs text-gray-500">
+                  หน้า {page} จาก {totalPages}
+                </p>
+                <div className="flex gap-1">
+                  {page > 1 && (
+                    <Link
+                      href={`/batches?page=${page - 1}${params.status ? `&status=${params.status}` : ""}`}
+                      className="px-3 py-1 text-xs border border-[#e2e8f0] rounded hover:bg-gray-50"
+                    >
+                      ก่อนหน้า
+                    </Link>
+                  )}
+                  {page < totalPages && (
+                    <Link
+                      href={`/batches?page=${page + 1}${params.status ? `&status=${params.status}` : ""}`}
+                      className="px-3 py-1 text-xs border border-[#e2e8f0] rounded hover:bg-gray-50"
+                    >
+                      ถัดไป
+                    </Link>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </Card>
     </div>
