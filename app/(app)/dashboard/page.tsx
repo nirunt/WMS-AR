@@ -14,7 +14,7 @@ import {
   XCircle,
   Award,
   TrendingUp,
-  BarChart3,
+  BarChart2,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -25,7 +25,9 @@ async function getDashboardData(userId: string, role: string) {
   tomorrow.setDate(tomorrow.getDate() + 1)
 
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+  const thirtyDaysAgo = new Date(today)
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29)
 
   const [
     todayBatches,
@@ -44,9 +46,7 @@ async function getDashboardData(userId: string, role: string) {
       where: { createdAt: { gte: today, lt: tomorrow }, deletedAt: null },
     }),
     prisma.batch.count({ where: { status: "QC_PENDING", deletedAt: null } }),
-    prisma.batch.count({
-      where: { status: "PENDING_MANAGER_APPROVAL", deletedAt: null },
-    }),
+    prisma.batch.count({ where: { status: "PENDING_MANAGER_APPROVAL", deletedAt: null } }),
     prisma.batch.count({
       where: {
         status: "RELEASED",
@@ -64,74 +64,69 @@ async function getDashboardData(userId: string, role: string) {
     prisma.cOA.findMany({
       take: 5,
       orderBy: { createdAt: "desc" },
-      include: { batch: { include: { product: true } } },
+      include: {
+        batch: { include: { product: true } },
+      },
     }),
     prisma.qCReport.count({
-      where: { overallResult: "PASS", createdAt: { gte: firstOfMonth } },
+      where: {
+        overallResult: "PASS",
+        createdAt: { gte: firstOfMonth },
+      },
     }),
     prisma.qCReport.count({
-      where: { overallResult: "FAIL", createdAt: { gte: firstOfMonth } },
+      where: {
+        overallResult: "FAIL",
+        createdAt: { gte: firstOfMonth },
+      },
     }),
-    // Chart: status distribution
     prisma.batch.groupBy({
       by: ["status"],
-      where: { deletedAt: null },
       _count: { id: true },
+      where: { deletedAt: null },
     }),
-    // Chart: batches created in last 30 days
     prisma.batch.findMany({
-      where: { deletedAt: null, createdAt: { gte: thirtyDaysAgo } },
+      where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
       select: { createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
-    // Chart: top 8 products by batch count
     prisma.batch.groupBy({
       by: ["productId"],
-      where: { deletedAt: null },
       _count: { id: true },
+      where: { deletedAt: null },
       orderBy: { _count: { id: "desc" } },
       take: 8,
     }),
   ])
 
-  // Build trend data: one entry per day for last 30 days
-  const trendMap = new Map<string, number>()
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
-    trendMap.set(d.toISOString().split("T")[0], 0)
-  }
-  for (const b of batchesLast30) {
-    const key = b.createdAt.toISOString().split("T")[0]
-    if (trendMap.has(key)) trendMap.set(key, (trendMap.get(key) ?? 0) + 1)
-  }
-  const trendData = Array.from(trendMap.entries()).map(([date, count]) => ({
-    date,
-    count,
-  }))
-
-  // Resolve product names for product chart
-  const productIds = productGroups.map((p) => p.productId)
-  const products =
-    productIds.length > 0
-      ? await prisma.product.findMany({
-          where: { id: { in: productIds } },
-          select: { id: true, nameTh: true, productCode: true },
-        })
-      : []
-  const productMap = new Map(products.map((p) => [p.id, p]))
-
-  const statusData = statusGroups.map((s) => ({
-    status: s.status,
-    count: s._count.id,
-  }))
-  const productData = productGroups.map((p) => ({
-    code: productMap.get(p.productId)?.productCode ?? "?",
-    name: productMap.get(p.productId)?.nameTh ?? "Unknown",
-    count: p._count.id,
-  }))
-
   const totalQC = passCount + failCount
   const passRate = totalQC > 0 ? Math.round((passCount / totalQC) * 100) : null
+
+  // Build 30-day trend map
+  const trendMap: Record<string, number> = {}
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(thirtyDaysAgo)
+    d.setDate(d.getDate() + i)
+    trendMap[d.toISOString().slice(0, 10)] = 0
+  }
+  for (const b of batchesLast30) {
+    const key = b.createdAt.toISOString().slice(0, 10)
+    if (key in trendMap) trendMap[key]++
+  }
+  const trendData = Object.entries(trendMap).map(([date, count]) => ({ date, count }))
+
+  // Resolve product names for chart
+  const productIds = productGroups.map((g) => g.productId)
+  const products = await prisma.productMaster.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, productCode: true, nameTh: true },
+  })
+  const productMap = new Map(products.map((p) => [p.id, p]))
+  const productChartData = productGroups.map((g) => ({
+    code: productMap.get(g.productId)?.productCode ?? g.productId.slice(0, 6),
+    name: productMap.get(g.productId)?.nameTh ?? g.productId,
+    count: g._count.id,
+  }))
 
   return {
     todayBatches,
@@ -142,9 +137,9 @@ async function getDashboardData(userId: string, role: string) {
     recentCOAs,
     passRate,
     totalQC,
-    statusData,
+    statusData: statusGroups.map((g) => ({ status: g.status, count: g._count.id })),
     trendData,
-    productData,
+    productChartData,
   }
 }
 
@@ -173,10 +168,8 @@ export default async function DashboardPage() {
       label: "รออนุมัติผู้จัดการ",
       value: data.pendingManagerApproval,
       icon: AlertCircle,
-      color:
-        data.pendingManagerApproval > 0 ? "text-orange-600" : "text-gray-400",
-      bg:
-        data.pendingManagerApproval > 0 ? "bg-orange-50" : "bg-gray-50",
+      color: data.pendingManagerApproval > 0 ? "text-orange-600" : "text-gray-400",
+      bg: data.pendingManagerApproval > 0 ? "bg-orange-50" : "bg-gray-50",
       urgent: data.pendingManagerApproval > 0,
       href: "/batches?status=PENDING_MANAGER_APPROVAL",
     },
@@ -229,40 +222,51 @@ export default async function DashboardPage() {
       </div>
 
       {/* Charts */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <BarChart3 className="w-4 h-4 text-[#003B73]" />
-          <h2 className="text-sm font-semibold text-[#003B73]">กราฟวิเคราะห์</h2>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>สถานะ Batch ทั้งหมด</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <BatchStatusChart data={data.statusData} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Batch 30 วันที่ผ่านมา</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <BatchTrendChart data={data.trendData} />
-            </CardContent>
-          </Card>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <div className="flex items-center gap-2">
+                <BarChart2 className="w-4 h-4" />
+                สถานะ Batch ทั้งหมด
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <BatchStatusChart data={data.statusData} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Batch 30 วันล่าสุด
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <BatchTrendChart data={data.trendData} />
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Product batch counts */}
-      <Card>
-        <CardHeader>
-          <CardTitle>จำนวน Batch แยกตามผลิตภัณฑ์ (Top 8)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProductBatchChart data={data.productData} />
-        </CardContent>
-      </Card>
+      {data.productChartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <div className="flex items-center gap-2">
+                <BarChart2 className="w-4 h-4" />
+                สินค้าที่มี Batch มากที่สุด (Top 8)
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ProductBatchChart data={data.productChartData} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent COAs */}
       <Card>
@@ -279,52 +283,28 @@ export default async function DashboardPage() {
         </CardHeader>
         <CardContent className="p-0">
           {data.recentCOAs.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-gray-500 text-center">
-              ยังไม่มี COA
-            </p>
+            <p className="px-5 py-8 text-sm text-gray-500 text-center">ยังไม่มี COA</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                    COA Number
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                    สินค้า
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                    Batch
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                    วันที่
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                    ผล
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">COA Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">สินค้า</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Batch</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">วันที่</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">ผล</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e2e8f0]">
                 {data.recentCOAs.map((coa) => (
-                  <tr
-                    key={coa.id}
-                    className="hover:bg-[#f8fafc] transition-colors"
-                  >
+                  <tr key={coa.id} className="hover:bg-[#f8fafc] transition-colors">
                     <td className="px-4 py-3 font-medium text-[#003B73]">
-                      <Link
-                        href={`/coa/${coa.coaNumber}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
+                      <Link href={`/coas/${coa.coaNumber}`} className="hover:underline">
                         {coa.coaNumber}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {coa.batch.product.nameTh}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">
-                      {coa.batch.batchNumber}
-                    </td>
+                    <td className="px-4 py-3 text-gray-700">{coa.batch.product.nameTh}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">{coa.batch.batchNumber}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {formatDate(coa.issueDate)}
                     </td>
@@ -342,24 +322,10 @@ export default async function DashboardPage() {
   )
 }
 
-function KPIContent({
-  kpi,
-}: {
-  kpi: {
-    label: string
-    value: string | number
-    icon: React.ElementType
-    color: string
-    bg: string
-    sub?: string
-    urgent?: boolean
-  }
-}) {
+function KPIContent({ kpi }: { kpi: { label: string; value: string | number; icon: React.ElementType; color: string; bg: string; sub?: string; urgent?: boolean } }) {
   return (
     <div>
-      <div
-        className={`w-9 h-9 rounded-lg ${kpi.bg} flex items-center justify-center mb-3`}
-      >
+      <div className={`w-9 h-9 rounded-lg ${kpi.bg} flex items-center justify-center mb-3`}>
         <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
       </div>
       <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>

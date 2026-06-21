@@ -2,6 +2,7 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["nodemailer", "bcryptjs", "pg", "@prisma/adapter-pg"],
   async headers() {
     return [
       {

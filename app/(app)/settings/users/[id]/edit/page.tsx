@@ -2,9 +2,8 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { EditUserForm } from "@/components/user/EditUserForm"
-import { UserCog } from "lucide-react"
+import { UserCog, ChevronLeft } from "lucide-react"
 import Link from "next/link"
-import { ChevronLeft } from "lucide-react"
 
 export default async function EditUserPage({
   params,

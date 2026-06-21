@@ -1,5 +1,6 @@
 import { z } from "zod"
-import { UserRole } from "@/lib/db"
+
+const USER_ROLES = ["ADMIN", "PRODUCTION", "QC", "MANAGER"] as const
 
 export const loginSchema = z.object({
   email: z.string().email("รูปแบบอีเมลไม่ถูกต้อง"),
@@ -10,13 +11,13 @@ export const createUserSchema = z.object({
   email: z.string().email("รูปแบบอีเมลไม่ถูกต้อง"),
   name: z.string().min(1, "กรุณาระบุชื่อ"),
   password: z.string().min(8, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร"),
-  role: z.nativeEnum(UserRole),
+  role: z.enum(USER_ROLES),
   department: z.string().optional(),
 })
 
 export const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
-  role: z.nativeEnum(UserRole).optional(),
+  role: z.enum(USER_ROLES).optional(),
   department: z.string().optional(),
   isActive: z.boolean().optional(),
 })

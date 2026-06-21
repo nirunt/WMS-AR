@@ -66,7 +66,7 @@ export default async function UsersPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">แผนก</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">บทบาท</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">เข้าใช้ล่าสุด</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">เข้าใช้งานล่าสุด</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
