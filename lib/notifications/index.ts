@@ -1,15 +1,14 @@
 import type { NotificationService } from "./notification.interface"
 import { ConsoleNotificationService } from "./console.notification"
+import { SmtpNotificationService } from "./smtp.notification"
 
 export type { NotificationService }
 
 export function getNotificationService(): NotificationService {
-  const adapter = process.env.NOTIFICATION_ADAPTER ?? "console"
-  switch (adapter) {
-    case "console":
-    default:
-      return new ConsoleNotificationService()
+  if (process.env.NOTIFICATION_ADAPTER === "smtp") {
+    return new SmtpNotificationService()
   }
+  return new ConsoleNotificationService()
 }
 
 export const notificationService = getNotificationService()

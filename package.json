@@ -28,7 +28,8 @@
     "prisma": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "pg": "^8.13.1",
-    "recharts": "^2.13.0"
+    "recharts": "^2.13.0",
+    "nodemailer": "^6.9.16"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -41,6 +42,7 @@
     "typescript": "^5",
     "@types/bcryptjs": "^2.4.6",
     "@types/pg": "^8.11.10",
+    "@types/nodemailer": "^6.4.17",
     "tsx": "^4.19.2",
     "dotenv": "^16.4.5"
   }
